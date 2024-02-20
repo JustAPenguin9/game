@@ -1,3 +1,5 @@
 hard_tabs = true
 newline_style = "Unix"   
 use_small_heuristics = "Max"
+# requires nightly
+group_imports = "StdExternalCrate"

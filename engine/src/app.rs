@@ -1,13 +1,3 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use crossterm::execute;
-use ratatui::widgets::Paragraph;
-use ratatui::{backend::CrosstermBackend, Terminal};
-
-use crate::event::Event;
-use crate::event::EventHandler;
-use crate::scene::Action;
-use crate::scene::Scene;
-
 use std::error::Error;
 use std::io::stdout;
 use std::{
@@ -15,16 +5,27 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::execute;
+use ratatui::widgets::Clear;
+use ratatui::widgets::Paragraph;
+use ratatui::{backend::CrosstermBackend, Terminal};
+
+use crate::event::EventHandler;
+use crate::event::{Event, UpdateEvent};
+use crate::scene::Action;
+use crate::scene::Scene;
+
 pub struct App<T> {
 	active: bool,
-	global: T,
+	pub global: T,
 	start_time: Instant,
-	tick_rate: Duration,
-	render_rate: Duration,
+	pub tick_rate: Duration,
+	pub render_rate: Duration,
 	// u64 is kinda unnecessary
 	tick_count: u64,
 	render_count: u64,
-	scenes: Vec<Scene<T>>,
+	pub scenes: Vec<Box<dyn Scene<T>>>,
 }
 
 impl<T> App<T> {
@@ -49,8 +50,9 @@ impl<T> App<T> {
 
 		while self.active {
 			match events.next().await {
+				// TODO: panic
 				Event::Error => panic!(),
-				Event::Render | Event::Resize(_, _) => {
+				Event::RenderEvent(event) => {
 					self.render_count += 1;
 					// render
 					terminal.draw(|f| {
@@ -62,25 +64,29 @@ impl<T> App<T> {
 							)),
 							f.size(),
 						);
+
 						// top scene
 						if let Some(scene) = self.scenes.last_mut() {
-							scene.incr_draw();
-							(scene.draw)(f);
+							// clear screen
+							f.render_widget(Clear, f.size());
+							// render scene
+							scene.draw(&self.global, f);
 						}
 					})?;
 				}
-				event => {
-					if let Event::Key(k) = event {
+				Event::UpdateEvent(event) => {
+					// quit
+					if let UpdateEvent::Key(k) = event {
 						if k == KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL) {
 							self.active = false;
 						}
 					}
 
 					self.tick_count += 1;
+
 					// update
 					if let Some(scene) = self.scenes.last_mut() {
-						scene.incr_update();
-						match (scene.update)(event, &mut self) {
+						match scene.update(&mut self.global, event) {
 							Action::Continue => {}
 							Action::End => {
 								// there will always be a scene to pop

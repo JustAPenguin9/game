@@ -1,6 +1,7 @@
+use std::time::Duration;
+
 use crossterm::event::{Event as CrosstermEvent, KeyEvent, KeyEventKind, MouseEvent};
 use futures::{FutureExt, StreamExt};
-use std::time::Duration;
 use tokio::{
 	sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
 	task::JoinHandle,
@@ -9,12 +10,20 @@ use tokio::{
 
 pub enum Event {
 	Error,
-	Tick,
+	RenderEvent(RenderEvent),
+	UpdateEvent(UpdateEvent),
+}
+
+pub enum RenderEvent {
 	Render,
+	Resize(u16, u16),
+}
+
+pub enum UpdateEvent {
+	Tick,
 	Key(KeyEvent),
 	Mouse(MouseEvent),
 	Paste(String),
-	Resize(u16, u16),
 }
 
 // most (all) of this is taken from the ratatui tutorial and async template
@@ -47,18 +56,18 @@ impl EventHandler {
 								match event {
 									CrosstermEvent::Key(key) => {
 										if key.kind == KeyEventKind::Press {
-											tx.send(Event::Key(key)).unwrap();
+											tx.send(Event::UpdateEvent(UpdateEvent::Key(key))).unwrap();
 										}
 									},
 									CrosstermEvent::Mouse(mouse) => {
-										tx.send(Event::Mouse(mouse)).unwrap();
+										tx.send(Event::UpdateEvent(UpdateEvent::Mouse(mouse))).unwrap();
 									},
 									CrosstermEvent::Resize(x, y) => {
-										tx.send(Event::Resize(x, y)).unwrap();
+										tx.send(Event::RenderEvent(RenderEvent::Resize(x, y))).unwrap();
 									},
 									CrosstermEvent::Paste(s) => {
 										// doesnt work on windows?
-										tx.send(Event::Paste(s)).unwrap();
+										tx.send(Event::UpdateEvent(UpdateEvent::Paste(s))).unwrap();
 									},
 									// focus gained and lost not needed
 									_ => {},
@@ -72,10 +81,10 @@ impl EventHandler {
 						}
 					},
 					_ = tick_delay => {
-						tx.send(Event::Tick).unwrap();
+						tx.send(Event::UpdateEvent(UpdateEvent::Tick)).unwrap();
 					},
 					_ = render_delay => {
-						tx.send(Event::Render).unwrap();
+						tx.send(Event::RenderEvent(RenderEvent::Render)).unwrap();
 					}
 				}
 			}
